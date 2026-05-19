@@ -4,7 +4,7 @@ katportalclient
 [![Doc Status](https://readthedocs.org/projects/katportalclient/badge/?version=latest)](http://katportalclient.readthedocs.io/en/latest)
 [![PyPI Version](https://img.shields.io/pypi/v/katportalclient.svg)](https://pypi.python.org/pypi/katportalclient)
 [![Python Versions](https://img.shields.io/pypi/pyversions/katportalclient.svg)](https://pypi.python.org/pypi/katportalclient/)
-[![Unit tests](https://github.com/ska-sa/katportalclient/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/ska-sa/katportalclient/actions/workflows/unit-tests.yml)
+[![Unit tests](https://github.com/rishadebrahim/katportalclient/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/rishadebrahim/katportalclient/actions/workflows/unit-tests.yml)
 
 A client for simple access to **katportal**, via websocket and HTTP connections.
 The HTTP methods allow once-off requests, like the current list of schedule blocks.
