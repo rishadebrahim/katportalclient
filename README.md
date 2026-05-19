@@ -24,8 +24,8 @@ Unit tests
 
 Unit tests are run by the GitHub Actions workflow in
 `.github/workflows/unit-tests.yml` on pushes and pull requests. The workflow
-runs `python -m pytest katportalclient/test/test_client.py` against Python 3.8,
-3.9, 3.10, 3.11 and 3.12.
+runs `python -m pytest katportalclient/test/test_client.py` against Python 3.8
+and 3.9.
 
 The latest local test run in this workspace used:
 
