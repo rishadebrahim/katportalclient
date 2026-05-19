@@ -1,6 +1,7 @@
 # Copyright 2015 SKA South Africa (http://ska.ac.za/)
 # BSD license - see COPYING for details
 """Tests for katportalclient."""
+import asyncio
 import logging
 import io
 import time
@@ -312,7 +313,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             io_loop=self.io_loop)
 
     def tearDown(self):
-        yield self.close(self._portal_client)
+        self._portal_client.disconnect()
         super(TestKATPortalClient, self).tearDown()
 
     def get_app(self):
@@ -327,39 +328,39 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         return self.application
 
     @gen_test
-    def test_connect(self):
+    async def test_connect(self):
         self.assertIsNotNone(self._portal_client)
-        yield self._portal_client.connect()
+        await self._portal_client.connect()
         self.assertTrue(self._portal_client.is_connected)
         self.assertTrue(self._portal_client._heart_beat_timer.is_running())
         self.assertFalse(self._portal_client._disconnect_issued)
 
     @gen_test
-    def test_reconnect(self):
+    async def test_reconnect(self):
         self.assertIsNotNone(self._portal_client)
-        yield self._portal_client.connect()
+        await self._portal_client.connect()
         self.assertTrue(self._portal_client.is_connected)
         self.assertTrue(self._portal_client._heart_beat_timer.is_running())
         connect_future = gen.Future()
         self._portal_client._connect = mock.MagicMock(
             return_value=connect_future)
         connect_future.set_result(None)
-        yield test_websocket.close()
-        yield gen.sleep(NEW_WEBSOCKET_DELAY)  # give ioloop time to open new websocket
+        test_websocket.close()
+        await asyncio.sleep(NEW_WEBSOCKET_DELAY)  # give ioloop time to open new websocket
         self._portal_client._connect.assert_called_with(reconnecting=True)
 
     @gen_test
-    def test_resend_subscriptions_and_strategies_after_reconnect(self):
+    async def test_resend_subscriptions_and_strategies_after_reconnect(self):
         self.assertIsNotNone(self._portal_client)
-        yield self._portal_client.connect()
+        await self._portal_client.connect()
         self.assertTrue(self._portal_client.is_connected)
         self.assertTrue(self._portal_client._heart_beat_timer.is_running())
         resend_future = gen.Future()
         self._portal_client._resend_subscriptions_and_strategies = mock.MagicMock(
             return_value=resend_future)
         resend_future.set_result(None)
-        yield test_websocket.close()
-        yield gen.sleep(NEW_WEBSOCKET_DELAY)  # give ioloop time to open new websocket
+        test_websocket.close()
+        await asyncio.sleep(NEW_WEBSOCKET_DELAY)  # give ioloop time to open new websocket
         self._portal_client._resend_subscriptions_and_strategies.assert_called_once()
 
         # test another reconnect if resending the strategies did not work on a
@@ -371,27 +372,27 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self._portal_client._resend_subscriptions_and_strategies.side_effect = Exception(
             'some exception was thrown while _resend_subscriptions_and_strategies')
         self._portal_client._connect_later = mock.MagicMock()
-        yield test_websocket.close()
-        yield gen.sleep(NEW_WEBSOCKET_DELAY)  # give ioloop time to open new websocket
+        test_websocket.close()
+        await asyncio.sleep(NEW_WEBSOCKET_DELAY)  # give ioloop time to open new websocket
         self._portal_client._connect_later.assert_called_once()
 
     @gen_test
-    def test_server_redis_reconnect_message(self):
+    async def test_server_redis_reconnect_message(self):
         self.assertIsNotNone(self._portal_client)
-        yield self._portal_client.connect()
+        await self._portal_client.connect()
         self.assertTrue(self._portal_client.is_connected)
         self.assertTrue(self._portal_client._heart_beat_timer.is_running())
         resend_future = gen.Future()
         self._portal_client._resend_subscriptions = mock.MagicMock(
             return_value=resend_future)
         resend_future.set_result(None)
-        yield self._portal_client._websocket_message('{"id": "redis-reconnect"}')
+        await self._portal_client._websocket_message('{"id": "redis-reconnect"}')
         self._portal_client._resend_subscriptions.assert_called_once()
 
     @gen_test
-    def test_resend_subscriptions(self):
+    async def test_resend_subscriptions(self):
         self.assertIsNotNone(self._portal_client)
-        yield self._portal_client.connect()
+        await self._portal_client.connect()
         self.assertTrue(self._portal_client.is_connected)
         self.assertTrue(self._portal_client._heart_beat_timer.is_running())
         send_future = gen.Future()
@@ -405,14 +406,14 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             JSONRPCRequest(method='unsubscribe', params='test params4'),
             JSONRPCRequest(method='subscribe', params='test params5'),
             JSONRPCRequest(method='subscribe', params='test params6')]
-        yield self._portal_client._resend_subscriptions()
+        await self._portal_client._resend_subscriptions()
         # only subscribes must be resent!
         self.assertEquals(self._portal_client._send.call_count, 4)
 
     @gen_test
-    def test_resend_subscriptions_and_strategies(self):
+    async def test_resend_subscriptions_and_strategies(self):
         self.assertIsNotNone(self._portal_client)
-        yield self._portal_client.connect()
+        await self._portal_client.connect()
         self.assertTrue(self._portal_client.is_connected)
         self.assertTrue(self._portal_client._heart_beat_timer.is_running())
         send_future = gen.Future()
@@ -427,13 +428,13 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             JSONRPCRequest(method='set_sampling_strategy',
                            params='test params5'),
             JSONRPCRequest(method='set_sampling_strategies', params='test params6')]
-        yield self._portal_client._resend_subscriptions_and_strategies()
+        await self._portal_client._resend_subscriptions_and_strategies()
         self.assertEquals(self._portal_client._send.call_count, 6)
 
     @gen_test
-    def test_disconnect(self):
+    async def test_disconnect(self):
         self.assertIsNotNone(self._portal_client)
-        yield self._portal_client.connect()
+        await self._portal_client.connect()
         self.assertTrue(self._portal_client.is_connected)
         self._portal_client.disconnect()
         self.assertFalse(self._portal_client.is_connected)
@@ -442,18 +443,18 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.assertTrue(self._portal_client._disconnect_issued)
 
     @gen_test
-    def test_add(self):
-        yield self._portal_client.connect()
-        result = yield self._portal_client.add(8, 67)
+    async def test_add(self):
+        await self._portal_client.connect()
+        result = await self._portal_client.add(8, 67)
         self.assertEqual(result, 8 + 67)
 
     @gen_test
-    def test_add_when_not_connected(self):
+    async def test_add_when_not_connected(self):
         with self.assertRaises(Exception):
-            yield self._portal_client.add(8, 67)
+            await self._portal_client.add(8, 67)
 
     @gen_test
-    def test_cache_jsonrpc_request(self):
+    async def test_cache_jsonrpc_request(self):
         req1 = JSONRPCRequest('test1', 'test_params1')
         req2 = JSONRPCRequest('test2', ['test_params2', 'test_params2'])
         req3 = JSONRPCRequest('subscribe', ['namespace', 'sub_strings'])
@@ -520,60 +521,60 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 0)
 
     @gen_test
-    def test_subscribe(self):
+    async def test_subscribe(self):
         self._portal_client._cache_jsonrpc_request = mock.MagicMock()
-        yield self._portal_client.connect()
-        result = yield self._portal_client.subscribe('planets', ['jupiter', 'm*'])
+        await self._portal_client.connect()
+        result = await self._portal_client.subscribe('planets', ['jupiter', 'm*'])
         self.assertEqual(result, 2)
         self._portal_client._cache_jsonrpc_request.assert_called_once()
 
     @gen_test
-    def test_unsubscribe(self):
+    async def test_unsubscribe(self):
         self._portal_client._cache_jsonrpc_request = mock.MagicMock()
-        yield self._portal_client.connect()
-        result = yield self._portal_client.unsubscribe(
+        await self._portal_client.connect()
+        result = await self._portal_client.unsubscribe(
             'alpha', ['a*', 'b*', 'c*', 'd', 'e'])
         self.assertEqual(result, 5)
         self._portal_client._cache_jsonrpc_request.assert_called_once()
 
     @gen_test
-    def test_set_sampling_strategy(self):
+    async def test_set_sampling_strategy(self):
         self._portal_client._cache_jsonrpc_request = mock.MagicMock()
-        yield self._portal_client.connect()
-        result = yield self._portal_client.set_sampling_strategy(
+        await self._portal_client.connect()
+        result = await self._portal_client.set_sampling_strategy(
             'ants', 'mode', 'period 1')
         self.assertTrue(isinstance(result, dict))
         self.assertTrue('mode' in list(result.keys()))
         self._portal_client._cache_jsonrpc_request.assert_called_once()
 
     @gen_test
-    def test_set_sampling_strategies(self):
+    async def test_set_sampling_strategies(self):
         self._portal_client._cache_jsonrpc_request = mock.MagicMock()
-        yield self._portal_client.connect()
-        result = yield self._portal_client.set_sampling_strategies(
+        await self._portal_client.connect()
+        result = await self._portal_client.set_sampling_strategies(
             'ants', ['mode', 'sensors_ok', 'ap_connected'], 'event-rate 1 5')
         self.assertTrue(isinstance(result, dict))
         self.assertTrue('mode' in list(result.keys()))
         self._portal_client._cache_jsonrpc_request.assert_called_once()
 
     @gen_test
-    def test_on_update_callback(self):
-        yield self._portal_client.connect()
+    async def test_on_update_callback(self):
+        await self._portal_client.connect()
         # Fake a redis publish update to make sure the callback is invoked
         req = JSONRPCRequest('pubsub-test', [])
         self._portal_client._ws.write_message(req())
-        yield gen.sleep(0.2)  # Give pubsub message chance to be received
+        await asyncio.sleep(0.2)  # Give pubsub message chance to be received
         self.assertEqual(self.on_update_callback_call_count, 1)
 
     @gen_test
-    def test_init_with_websocket_url(self):
+    async def test_init_with_websocket_url(self):
         """Test backwards compatibility initialising directly with a websocket URL."""
         test_client = KATPortalClient(self.websocket_url, None)
-        yield test_client.connect()
+        await test_client.connect()
         self.assertTrue(test_client.is_connected)
 
     @gen_test
-    def test_sitemap_includes_expected_endpoints(self):
+    async def test_sitemap_includes_expected_endpoints(self):
         sitemap = self._portal_client.sitemap
         self.assertTrue(sitemap['websocket'].startswith('ws://'))
         self.assertTrue(
@@ -583,7 +584,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.assertTrue(sitemap['sub_nr'] == '3')
 
     @gen_test
-    def test_schedule_blocks_assigned_list_valid(self):
+    async def test_schedule_blocks_assigned_list_valid(self):
         """Test schedule block IDs are correctly extracted from JSON text."""
         schedule_block_base_url = self._portal_client.sitemap[
             'schedule_blocks']
@@ -601,7 +602,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             invalid_response="""{"result":null}""",
             starts_with=schedule_block_base_url)
 
-        sb_ids = yield self._portal_client.schedule_blocks_assigned()
+        sb_ids = await self._portal_client.schedule_blocks_assigned()
 
         # Verify that only the 2 schedule blocks for subarray 3 are returned
         self.assertTrue(len(sb_ids) == 2,
@@ -610,7 +611,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.assertIn('20160908-0008', sb_ids)
 
     @gen_test
-    def test_schedule_blocks_assigned_list_empty(self):
+    async def test_schedule_blocks_assigned_list_empty(self):
         """Test with no schedule block IDs on a subarray."""
         schedule_block_base_url = self._portal_client.sitemap[
             'schedule_blocks']
@@ -625,14 +626,14 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             invalid_response="""{"result":null}""",
             starts_with=schedule_block_base_url)
 
-        sb_ids = yield self._portal_client.schedule_blocks_assigned()
+        sb_ids = await self._portal_client.schedule_blocks_assigned()
 
         # Verify that there are no schedule blocks (since tests work on
         # subarray 3)
         self.assertTrue(len(sb_ids) == 0, "Expect no schedule block IDs")
 
     @gen_test
-    def test_schedule_block_detail(self):
+    async def test_schedule_block_detail(self):
         """Test schedule block detail is correctly extracted from JSON text."""
         schedule_block_base_url = self._portal_client.sitemap[
             'schedule_blocks']
@@ -663,9 +664,9 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             contains=schedule_block_id)
 
         with self.assertRaises(ScheduleBlockNotFoundError):
-            yield self._portal_client.schedule_block_detail("20160908-bad")
+            await self._portal_client.schedule_block_detail("20160908-bad")
 
-        sb_valid = yield self._portal_client.schedule_block_detail(schedule_block_id)
+        sb_valid = await self._portal_client.schedule_block_detail(schedule_block_id)
         self.assertTrue(sb_valid['id_code'] == schedule_block_id)
         self.assertTrue(sb_valid['sub_nr'] == 3)
         self.assertIn('description', sb_valid)
@@ -677,7 +678,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.assertIn('state', sb_valid)
 
     @gen_test
-    def test_sb_ids_by_capture_block_valid(self):
+    async def test_sb_ids_by_capture_block_valid(self):
         """Test SB IDs are extracted for valid capture block ID."""
         capture_block_base_url = self._portal_client.sitemap[
             'capture_blocks']
@@ -688,7 +689,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                 {"result":["20190424-0009", "20190424-0010"]}""",
             invalid_response=r"""{"result":null}""",
             starts_with=capture_block_base_url)
-        sb_ids = yield self._portal_client.sb_ids_by_capture_block(capture_block_id)
+        sb_ids = await self._portal_client.sb_ids_by_capture_block(capture_block_id)
         # Verify that sb_id has been returned to the list
         self.assertTrue(len(sb_ids) == 2,
                         "Expect exactly 2 schedule block IDs")
@@ -696,7 +697,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.assertIn('20190424-0010', sb_ids)
 
     @gen_test
-    def test_sb_ids_by_capture_block_empty(self):
+    async def test_sb_ids_by_capture_block_empty(self):
         """Test no SB IDs are extracted for unused capture block ID."""
         capture_block_base_url = self._portal_client.sitemap[
             'capture_blocks']
@@ -706,13 +707,13 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             valid_response=r"""{"result":[]}""",
             invalid_response=r"""{"result":null}""",
             starts_with=capture_block_base_url)
-        sb_ids = yield self._portal_client.sb_ids_by_capture_block(capture_block_id)
+        sb_ids = await self._portal_client.sb_ids_by_capture_block(capture_block_id)
         # Verify that empty list returned
         self.assertTrue(len(sb_ids) == 0,
                         "Expect no schedule block IDs")
 
     @gen_test
-    def test_sensor_names_single_sensor_valid(self):
+    async def test_sensor_names_single_sensor_valid(self):
         """Test single sensor name is correctly extracted from JSON text."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -724,13 +725,13 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_with=history_base_url,
             contains=sensor_name_filter)
 
-        sensors = yield self._portal_client.sensor_names(sensor_name_filter)
+        sensors = await self._portal_client.sensor_names(sensor_name_filter)
 
         self.assertTrue(len(sensors) == 1, "Expect exactly 1 sensor")
         self.assertTrue(sensors[0] == sensor_name_filter)
 
     @gen_test
-    def test_sensor_names_multiple_sensors_valid(self):
+    async def test_sensor_names_multiple_sensors_valid(self):
         """Test multiple sensors correctly extracted from JSON text."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -743,14 +744,14 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_with=history_base_url,
             contains=quote_plus(sensor_name_filter))
 
-        sensors = yield self._portal_client.sensor_names(sensor_name_filter)
+        sensors = await self._portal_client.sensor_names(sensor_name_filter)
 
         self.assertTrue(len(sensors) == 2, "Expect exactly 2 sensors")
         self.assertTrue(sensors[0] == 'anc_weather_device_status')
         self.assertTrue(sensors[1] == 'anc_wind_device_status')
 
     @gen_test
-    def test_sensor_names_no_duplicate_sensors(self):
+    async def test_sensor_names_no_duplicate_sensors(self):
         """Test no duplicates if filters request duplicate sensors."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -763,13 +764,13 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_with=history_base_url,
             contains=sensor_name_filters[0])
 
-        sensors = yield self._portal_client.sensor_names(sensor_name_filters)
+        sensors = await self._portal_client.sensor_names(sensor_name_filters)
 
         self.assertTrue(len(sensors) == 1, "Expect exactly 1 sensor")
         self.assertTrue(sensors[0] == sensor_name_filters[0])
 
     @gen_test
-    def test_sensor_names_empty_list(self):
+    async def test_sensor_names_empty_list(self):
         """Test with sensor name that does not exist."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -780,12 +781,12 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                 sensor_json['anc_weather_wind_speed']),
             starts_with=history_base_url)
 
-        sensors = yield self._portal_client.sensor_names('non_existant_sensor')
+        sensors = await self._portal_client.sensor_names('non_existant_sensor')
 
         self.assertTrue(len(sensors) == 0, "Expect exactly 0 sensors")
 
     @gen_test
-    def test_sensor_names_exception_for_invalid_regex(self):
+    async def test_sensor_names_exception_for_invalid_regex(self):
         """Test that invalid regex raises exception."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -796,10 +797,10 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_with=history_base_url)
 
         with self.assertRaises(SensorNotFoundError):
-            yield self._portal_client.sensor_names('*bad')
+            await self._portal_client.sensor_names('*bad')
 
     @gen_test
-    def test_sensor_detail(self):
+    async def test_sensor_detail(self):
         """Test sensor's attributes are correctly extracted from JSON text."""
         history_base_url = self._portal_client.sitemap['historic_sensor_values']
         sensor_name = 'anc_weather_wind_speed'
@@ -810,9 +811,9 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             contains=sensor_name)
 
         with self.assertRaises(SensorNotFoundError):
-            yield self._portal_client.sensor_detail('invalid_sensor_name')
+            await self._portal_client.sensor_detail('invalid_sensor_name')
 
-        sensor_detail = yield self._portal_client.sensor_detail(sensor_name)
+        sensor_detail = await self._portal_client.sensor_detail(sensor_name)
 
         self.assertTrue(sensor_detail['name'] == sensor_name)
         self.assertTrue(sensor_detail['description'] == "Wind speed")
@@ -823,7 +824,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.assertTrue(sensor_detail['katcp_name'] == "anc.weather.wind-speed")
 
     @gen_test
-    def test_sensor_detail_for_multiple_sensors_but_exact_match(self):
+    async def test_sensor_detail_for_multiple_sensors_but_exact_match(self):
         """Test sensor detail request with many matches, but one exact match.
 
         In this case, there is a sensor name that also happens to be a prefix
@@ -842,11 +843,11 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_with=history_base_url,
             contains=sensor_name_filter)
 
-        sensor_detail = yield self._portal_client.sensor_detail('anc_gust_wind_speed')
+        sensor_detail = await self._portal_client.sensor_detail('anc_gust_wind_speed')
         self.assertTrue(sensor_detail['name'] == 'anc_gust_wind_speed')
 
     @gen_test
-    def test_sensor_detail_exception_for_multiple_sensors(self):
+    async def test_sensor_detail_exception_for_multiple_sensors(self):
         """Test exception raised if sensor name is not unique for detail request."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -860,24 +861,24 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             contains=sensor_name_filter)
 
         with self.assertRaises(SensorNotFoundError):
-            yield self._portal_client.sensor_detail(sensor_name_filter)
+            await self._portal_client.sensor_detail(sensor_name_filter)
 
     @gen_test
-    def test_sensor_value_invalid_results(self):
+    async def test_sensor_value_invalid_results(self):
         """test that we handle the monitor server returning an invalid string"""
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher('')
         with self.assertRaises(InvalidResponseError):
-            yield self._portal_client.sensor_value("INVALID_SENSOR")
+            await self._portal_client.sensor_value("INVALID_SENSOR")
 
     @gen_test
-    def test_sensor_value_no_results(self):
+    async def test_sensor_value_no_results(self):
         """Test that we handle no matches"""
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher('[]')
         with self.assertRaises(SensorNotFoundError):
-            yield self._portal_client.sensor_value("INVALID_SENSOR")
+            await self._portal_client.sensor_value("INVALID_SENSOR")
 
     @gen_test
-    def test_sensor_value_multiple_results_one_match(self):
+    async def test_sensor_value_multiple_results_one_match(self):
         """Test that we handle multiple results correctly with one match"""
 
         mon_response = ('[{"status":"nominal",'
@@ -889,13 +890,13 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                         '"value_ts":111.111,"time":222.222}]')
 
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher(mon_response)
-        result = yield self._portal_client.sensor_value("tfrmon_tfr_m018_l_band_offset")
+        result = await self._portal_client.sensor_value("tfrmon_tfr_m018_l_band_offset")
         expected_result = SensorSample(sample_time=1531302437, value=43680.0,
                                        status='nominal')
         assert result == expected_result
 
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher(mon_response)
-        result = yield self._portal_client.sensor_value("tfrmon_tfr_m018_l_band_offset",
+        result = await self._portal_client.sensor_value("tfrmon_tfr_m018_l_band_offset",
                                                         include_value_ts=True)
         expected_result = SensorSampleValueTime(sample_time=1531302437,
                                                 value_time=1530713112,
@@ -903,7 +904,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         assert result == expected_result
 
     @gen_test
-    def test_sensor_value_multiple_results_no_match(self):
+    async def test_sensor_value_multiple_results_no_match(self):
         """Test that we handle multiple results correctly with no matches"""
 
         mon_response = ('[{"status":"nominal",'
@@ -916,11 +917,11 @@ class TestKATPortalClient(WebSocketBaseTestCase):
 
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher(mon_response)
         with self.assertRaises(SensorNotFoundError):
-            yield self._portal_client.sensor_value(
+            await self._portal_client.sensor_value(
                 "tfrmon_tfr_m018_l_band_offset_average")
 
     @gen_test
-    def test_sensor_value_one_result(self):
+    async def test_sensor_value_one_result(self):
         """Test that we can handle single result"""
         mon_response = ('[{"status":"nominal",'
                         '"name":"some_other_sample","component":"anc","value":43680.0,'
@@ -928,34 +929,34 @@ class TestKATPortalClient(WebSocketBaseTestCase):
 
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher(mon_response)
         expected_result = SensorSample(sample_time=222.222, value=43680.0, status='nominal')
-        res = yield self._portal_client.sensor_value(
+        res = await self._portal_client.sensor_value(
             "tfrmon_tfr_m018_l_band_offset_average")
         assert res == expected_result
 
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher(mon_response)
         expected_result = SensorSampleValueTime(sample_time=222.222, value_time=111.111,
                                                 value=43680.0, status=u'nominal')
-        res = yield self._portal_client.sensor_value(
+        res = await self._portal_client.sensor_value(
             "tfrmon_tfr_m018_l_band_offset_average",
             include_value_ts=True)
         assert res == expected_result
 
     @gen_test
-    def test_sensor_values_invalid_results(self):
+    async def test_sensor_values_invalid_results(self):
         """test that we handle the monitor server returning an invalid string"""
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher('')
         with self.assertRaises(InvalidResponseError):
-            yield self._portal_client.sensor_values("INVALID_FILTER")
+            await self._portal_client.sensor_values("INVALID_FILTER")
 
     @gen_test
-    def test_sensor_values_no_results(self):
+    async def test_sensor_values_no_results(self):
         """Test that we handle no matches"""
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher('[]')
         with self.assertRaises(SensorNotFoundError):
-            yield self._portal_client.sensor_values("INVALID_FILTER")
+            await self._portal_client.sensor_values("INVALID_FILTER")
 
     @gen_test
-    def test_sensor_values_one_filter_multiple_matches(self):
+    async def test_sensor_values_one_filter_multiple_matches(self):
         """Test that we handle multiple matches correctly with one filter"""
 
         mon_response = ('[{"status":"nominal",'
@@ -967,7 +968,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                         '"value_ts":111.111,"time":222.222}]')
 
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher(mon_response)
-        result = yield self._portal_client.sensor_values("ARBITRARY_FILTER")
+        result = await self._portal_client.sensor_values("ARBITRARY_FILTER")
         expected_result = {
             "tfrmon_tfr_m018_l_band_offset": SensorSample(sample_time=1531302437,
                                                        value=43680.0,
@@ -978,7 +979,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         assert result == expected_result
 
         self.mock_http_async_client().fetch.side_effect = self.mock_async_fetcher(mon_response)
-        result = yield self._portal_client.sensor_values("ARBITRARY_FILTER",
+        result = await self._portal_client.sensor_values("ARBITRARY_FILTER",
                                                          include_value_ts=True)
         expected_result = {
             "tfrmon_tfr_m018_l_band_offset": SensorSampleValueTime(sample_time=1531302437,
@@ -992,7 +993,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         assert result == expected_result
 
     @gen_test
-    def test_sensor_values_multiple_filters_multiple_matches(self):
+    async def test_sensor_values_multiple_filters_multiple_matches(self):
         """Test that we handle multiple matches correctly with multiple filters"""
 
         mon_response_0 = ('[{"status":"nominal",'
@@ -1016,12 +1017,12 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                            "some_other_sample_1": SensorSample(sample_time=221.222,
                                                                value=43580.0,
                                                                status='nominal')}
-        res = yield self._portal_client.sensor_values(["some_other_sample_0",
+        res = await self._portal_client.sensor_values(["some_other_sample_0",
                                                        "some_other_sample_1"])
         assert res == expected_result, res
 
     @gen_test
-    def test_sensor_history_single_sensor_without_value_time(self):
+    async def test_sensor_history_single_sensor_without_value_time(self):
         """Test that time ordered data without value_time is received for a
         single sensor request.
         """
@@ -1035,7 +1036,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_with=history_base_url,
             contains=sensor_name)
 
-        samples = yield self._portal_client.sensor_history(
+        samples = await self._portal_client.sensor_history(
             sensor_name, start_time_sec=0, end_time_sec=time.time(),
             include_value_ts=False)
         # expect exactly 4 samples
@@ -1050,7 +1051,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             self.assertEqual(len(sample), 3)
 
     @gen_test
-    def test_sensor_history_single_sensor_with_value_time(self):
+    async def test_sensor_history_single_sensor_with_value_time(self):
         """Test that time ordered data with value_time is received for a single sensor request."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -1061,7 +1062,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_with=history_base_url,
             contains=sensor_name)
 
-        samples = yield self._portal_client.sensor_history(
+        samples = await self._portal_client.sensor_history(
             sensor_name, start_time_sec=0, end_time_sec=time.time(), include_value_ts=True)
         # expect exactly 3 samples
         self.assertTrue(len(samples) == 3)
@@ -1077,7 +1078,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             self.assertGreater(sample.sample_time, sample.value_time)
 
     @gen_test
-    def test_sensor_history_single_sensor_valid_times(self):
+    async def test_sensor_history_single_sensor_valid_times(self):
         """Test that time ordered data is received for a single sensor request."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -1088,7 +1089,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_with=history_base_url,
             contains=sensor_name)
 
-        samples = yield self._portal_client.sensor_history(
+        samples = await self._portal_client.sensor_history(
             sensor_name, start_time_sec=0, end_time_sec=time.time())
         # expect exactly 3 samples
         self.assertTrue(len(samples) == 3)
@@ -1100,7 +1101,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             time_sec = sample[0]
 
     @gen_test
-    def test_sensor_history_single_sensor_invalid_times(self):
+    async def test_sensor_history_single_sensor_invalid_times(self):
         """Test that no data is received for a single sensor request."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -1112,13 +1113,13 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_with=history_base_url,
             contains=sensor_name)
 
-        samples = yield self._portal_client.sensor_history(
+        samples = await self._portal_client.sensor_history(
             sensor_name, start_time_sec=0, end_time_sec=100)
         # expect no samples
         self.assertTrue(len(samples) == 0)
 
     @gen_test
-    def test_sensor_history_multiple_sensors_valid_times(self):
+    async def test_sensor_history_multiple_sensors_valid_times(self):
         """Test that time ordered data is received for a multiple sensor request."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -1141,7 +1142,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                 sensor_names[0],
                 sensor_names[1]])
 
-        histories = yield self._portal_client.sensors_histories(sensor_name_filter,
+        histories = await self._portal_client.sensors_histories(sensor_name_filter,
                                                                 start_time_sec=0,
                                                                 end_time_sec=time.time())
         # expect exactly 2 lists of samples
@@ -1161,7 +1162,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                 time_sec = sample[0]
 
     @gen_test
-    def test_sensor_history_multiple_sensor_futures(self):
+    async def test_sensor_history_multiple_sensor_futures(self):
         """Test multiple sensor requests in list of futures."""
         history_base_url = self._portal_client.sitemap[
             'historic_sensor_values']
@@ -1185,7 +1186,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             sensor_names[0], start_time_sec=0, end_time_sec=time.time()))
         futures.append(self._portal_client.sensor_history(
             sensor_names[1], start_time_sec=0, end_time_sec=time.time()))
-        histories_list = yield futures
+        histories_list = await asyncio.gather(*futures)
         histories = {}
         for history, sensor_name in zip(histories_list, sensor_names):
             histories[sensor_name] = history
@@ -1206,7 +1207,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                 time_sec = sample[0]
 
     @gen_test
-    def test_future_targets(self):
+    async def test_future_targets(self):
         sb_base_url = self._portal_client.sitemap['schedule_blocks']
         sb_id_code_1 = "20160908-0005"
         sb_id_code_2 = "20160908-0006"
@@ -1240,10 +1241,10 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             containses=[sb_id_code_1, sb_id_code_2, sb_id_code_3])
 
         with self.assertRaises(ScheduleBlockTargetsParsingError):
-            yield self._portal_client.future_targets(sb_id_code_1)
+            await self._portal_client.future_targets(sb_id_code_1)
         with self.assertRaises(ScheduleBlockNotFoundError):
-            yield self._portal_client.future_targets('bad sb id code')
-        targets_list = yield self._portal_client.future_targets(sb_id_code_3)
+            await self._portal_client.future_targets('bad sb id code')
+        targets_list = await self._portal_client.future_targets(sb_id_code_3)
         self.assertEquals(targets_list, [{u'key': u'some json body'}])
 
     def test_create_jwt_login_token(self):
@@ -1266,7 +1267,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             b'5CUP3vwKefqdEMBVpnNfMRYah5jPCAA=')
 
     @gen_test
-    def test_login(self):
+    async def test_login(self):
         """Test the login procedure.
         1. Verify username, password and role.
         2. Login with the resulting session id token
@@ -1282,7 +1283,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                 '{"session_id": "token generated by katportal", "user_id": "123"}'))
         authorized_fetch_future.set_result(auth_fetch_result)
 
-        yield self._portal_client.login('testusername@test.org', 'testpass')
+        await self._portal_client.login('testusername@test.org', 'testpass')
         self._portal_client.authorized_fetch.assert_called_with(
             auth_token='token generated by katportal',
             url=self._portal_client.sitemap['authorization'] + '/user/login',
@@ -1300,7 +1301,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             return_value=authorized_fetch_fail_future)
         authorized_fetch_fail_future.set_result(auth_fetch_fail_result)
         self._portal_client.authorized_fetch.set_result(auth_fetch_fail_result)
-        yield self._portal_client.login('fail username', 'fail pass')
+        await self._portal_client.login('fail username', 'fail pass')
         # test tokens for this test is generated using a the email, password combination
         # and the standard JWT standard RFC 7519, see http://jwt.io
         self._portal_client.authorized_fetch.assert_called_with(
@@ -1312,7 +1313,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.assertEquals(self._portal_client._current_user_id, None)
 
     @gen_test
-    def test_logout(self):
+    async def test_logout(self):
         """Test logout procedure
         1. Login
         2. Logout
@@ -1328,7 +1329,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                 '{"session_id": "token generated by katportal", "user_id": "123"}'))
         authorized_fetch_future.set_result(auth_fetch_result)
 
-        yield self._portal_client.login('testusername@test.org', 'testpass')
+        await self._portal_client.login('testusername@test.org', 'testpass')
         self._portal_client.authorized_fetch.assert_called_with(
             auth_token='token generated by katportal',
             url=self._portal_client.sitemap['authorization'] + '/user/login',
@@ -1338,7 +1339,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.assertEquals(self._portal_client._current_user_id, '123')
 
         # logout
-        yield self._portal_client.logout()
+        await self._portal_client.logout()
         self.assertEquals(self._portal_client._session_id, None)
         self.assertEquals(self._portal_client._current_user_id, None)
         self._portal_client.authorized_fetch.assert_called_with(
@@ -1347,7 +1348,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             body='{}', method='POST')
 
     @gen_test
-    def test_userlog_tags(self):
+    async def test_userlog_tags(self):
         """Test userlogs tags listing"""
         base_url = self._portal_client.sitemap['userlogs'] + '/tags'
 
@@ -1366,13 +1367,13 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             invalid_responses=['error'],
             starts_withs=base_url)
 
-        tags = yield self._portal_client.userlog_tags()
+        tags = await self._portal_client.userlog_tags()
         self.assertEquals(len(tags), 2)
         self.assertEquals(tags[0]['id'], '1')
         self.assertEquals(tags[1]['id'], '2')
 
     @gen_test
-    def test_userlogs(self):
+    async def test_userlogs(self):
         """Test userlogs listing"""
         # fake a login
         self._portal_client._session_id = 'some token'
@@ -1419,13 +1420,13 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                 """))
         authorized_fetch_future.set_result(auth_fetch_result)
 
-        userlogs = yield self._portal_client.userlogs()
+        userlogs = await self._portal_client.userlogs()
         self.assertEquals(len(userlogs), 2)
         self.assertEquals(userlogs[0]['id'], '40')
         self.assertEquals(userlogs[1]['id'], '41')
 
     @gen_test
-    def test_create_userlog(self):
+    async def test_create_userlog(self):
         """Test userlog creation"""
         # fake a login
         self._portal_client._session_id = 'some token'
@@ -1458,7 +1459,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                 """))
         authorized_fetch_future.set_result(auth_fetch_result)
 
-        userlog = yield self._portal_client.create_userlog(
+        userlog = await self._portal_client.create_userlog(
             content='test content',
             tag_ids=[1, 2, 3],
             start_time='2017-02-07 08:47:22',
@@ -1490,7 +1491,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.assertDictEqual(actual_body_dict, expected_body_dict)
 
     @gen_test
-    def test_modify_userlog(self):
+    async def test_modify_userlog(self):
         """Test userlog modification"""
         # fake a login
         self._portal_client._session_id = 'some token'
@@ -1538,7 +1539,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             'id': 40,
             'end_time': '2017-02-07 23:59:59'
         }
-        userlog = yield self._portal_client.modify_userlog(userlog_to_modify, [1, 2, 3])
+        userlog = await self._portal_client.modify_userlog(userlog_to_modify, [1, 2, 3])
         self.assertEquals(
             userlog,
             {u'other_metadata': u'[]', u'user_id': u'1', u'attachments': u'[]',
@@ -1563,10 +1564,10 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         # Test bad tags attribute
         with self.assertRaises(ValueError):
             userlog_to_modify['tags'] = 'random nonsense'
-            userlog = yield self._portal_client.modify_userlog(userlog_to_modify)
+            userlog = await self._portal_client.modify_userlog(userlog_to_modify)
 
     @gen_test
-    def test_sensor_subarray_lookup(self):
+    async def test_sensor_subarray_lookup(self):
         """Test sensor subarray lookup is correctly extracted."""
         lookup_base_url = (self._portal_client.sitemap['subarray'] +
                            '/3/sensor-lookup/cbf/device_status/0')
@@ -1578,12 +1579,12 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             invalid_response=['error'],
             starts_with=lookup_base_url,
             contains=sensor_name_filter)
-        sensor = yield self._portal_client.sensor_subarray_lookup(
+        sensor = await self._portal_client.sensor_subarray_lookup(
             'cbf', sensor_name_filter, False)
         self.assertTrue(sensor == expected_sensor_name)
 
     @gen_test
-    def test_sensor_subarray_katcp_name_lookup(self):
+    async def test_sensor_subarray_katcp_name_lookup(self):
         """Test sensor subarray lookup returns the correct katcp name."""
         lookup_base_url = (self._portal_client.sitemap['subarray'] +
                            '/3/sensor-lookup/cbf/device-status/1')
@@ -1595,12 +1596,12 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             invalid_response=['error'],
             starts_with=lookup_base_url,
             contains=sensor_name_filter)
-        sensor = yield self._portal_client.sensor_subarray_lookup(
+        sensor = await self._portal_client.sensor_subarray_lookup(
             'cbf', sensor_name_filter, True)
         self.assertTrue(sensor == expected_sensor_name)
 
     @gen_test
-    def test_sensor_subarray_invalid_sensor_lookup(self):
+    async def test_sensor_subarray_invalid_sensor_lookup(self):
         """Test that sensor subarray lookup can correctly handle an invalid sensor name."""
         lookup_base_url = (self._portal_client.sitemap['subarray'] +
                            '/3/sensor-lookup/anc/device_status/0')
@@ -1612,7 +1613,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_with=lookup_base_url,
             contains=sensor_name_filter)
         with self.assertRaises(SensorLookupError):
-            yield self._portal_client.sensor_subarray_lookup(
+            await self._portal_client.sensor_subarray_lookup(
                 'anc', sensor_name_filter, False)
 
 
