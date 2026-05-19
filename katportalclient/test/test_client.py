@@ -384,8 +384,8 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         resend_future = gen.Future()
         self._portal_client._resend_subscriptions = mock.MagicMock(
             return_value=resend_future)
-        self._portal_client._websocket_message('{"id": "redis-reconnect"}')
         resend_future.set_result(None)
+        yield self._portal_client._websocket_message('{"id": "redis-reconnect"}')
         self._portal_client._resend_subscriptions.assert_called_once()
 
     @gen_test
@@ -1185,10 +1185,10 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             sensor_names[0], start_time_sec=0, end_time_sec=time.time()))
         futures.append(self._portal_client.sensor_history(
             sensor_names[1], start_time_sec=0, end_time_sec=time.time()))
-        yield futures
+        histories_list = yield futures
         histories = {}
-        for future, sensor_name in zip(futures, sensor_names):
-            histories[sensor_name] = future.result()
+        for history, sensor_name in zip(histories_list, sensor_names):
+            histories[sensor_name] = history
         # expect exactly 2 lists of samples
         self.assertTrue(len(histories) == 2)
         # expect keys to match the 2 sensor names

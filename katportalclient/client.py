@@ -168,16 +168,15 @@ class KATPortalClient(object):
             self._send_heart_beat, WS_HEART_BEAT_INTERVAL)
         self._current_user_id = None
 
-    @tornado.gen.coroutine
-    def logout(self):
+    async def logout(self):
         """ Logs user out of katportal. Katportal then deletes the cached
         session_id for this client. In order to call HTTP requests that
         requires authentication, the user will need to login again.
         """
         try:
             if self._session_id is not None:
-                url = (yield self.get_sitemap())['authorization'] + '/user/logout'
-                response = yield self.authorized_fetch(
+                url = (await self.get_sitemap())['authorization'] + '/user/logout'
+                response = await self.authorized_fetch(
                     url=url, auth_token=self._session_id, method='POST', body='{}')
                 self._logger.info("Logout result: %s", response.body)
         finally:
@@ -185,8 +184,7 @@ class KATPortalClient(object):
             self._session_id = None
             self._current_user_id = None
 
-    @tornado.gen.coroutine
-    def login(self, username, password, role='read_only'):
+    async def login(self, username, password, role='read_only'):
         """
         Logs the specified user into katportal and caches the session_id
         created by katportal in this instance of KatportalClient.
@@ -203,9 +201,9 @@ class KATPortalClient(object):
 
         """
         login_token = create_jwt_login_token(username, password)
-        authorization = (yield self.get_sitemap())['authorization']
+        authorization = (await self.get_sitemap())['authorization']
         url = authorization + '/user/verify/' + role
-        response = yield self.authorized_fetch(url=url, auth_token=login_token)
+        response = await self.authorized_fetch(url=url, auth_token=login_token)
 
         try:
             response_json = json.loads(response.body)
@@ -215,7 +213,7 @@ class KATPortalClient(object):
                 self._current_user_id = response_json.get('user_id')
 
                 login_url = authorization + '/user/login'
-                response = yield self.authorized_fetch(
+                response = await self.authorized_fetch(
                     url=login_url, auth_token=self._session_id,
                     method='POST', body='')
 
@@ -231,8 +229,7 @@ class KATPortalClient(object):
             self._current_user_id = None
             self._logger.exception('Error in response')
 
-    @tornado.gen.coroutine
-    def authorized_fetch(self, url, auth_token, **kwargs):
+    async def authorized_fetch(self, url, auth_token, **kwargs):
         """
         Wraps tornado.fetch to add the Authorization headers with
         the locally cached session_id.
@@ -243,11 +240,10 @@ class KATPortalClient(object):
             "Authorization": "CustomJWT {}".format(auth_token)})
         request = HTTPRequest(
             url, headers=login_header, **kwargs)
-        response = yield self._http_client.fetch(request)
-        raise tornado.gen.Return(response)
+        response = await self._http_client.fetch(request)
+        return response
 
-    @tornado.gen.coroutine
-    def _get_sitemap(self, url):
+    async def _get_sitemap(self, url):
         """
         Fetches the sitemap from the specified URL.
 
@@ -285,7 +281,7 @@ class KATPortalClient(object):
             http_client = tornado.httpclient.AsyncHTTPClient(force_instance=True)
             try:
                 try:
-                    response = yield http_client.fetch(url)
+                    response = await http_client.fetch(url)
                     response = json.loads(response.body)
                     result.update(response['client'])
                 except tornado.httpclient.HTTPError:
@@ -298,17 +294,16 @@ class KATPortalClient(object):
                 http_client.close()
         else:
             result['websocket'] = url
-        raise tornado.gen.Return(result)
+        return result
 
-    @tornado.gen.coroutine
-    def _init_sitemap(self):
+    async def _init_sitemap(self):
         """Initializes the sitemap if it is not already initialized.
 
         See :meth:`.get_sitemap` for details.
         """
 
         if not self._sitemap:
-            self._sitemap = yield self._get_sitemap(self._url)
+            self._sitemap = await self._get_sitemap(self._url)
             self._logger.debug("Sitemap: %s.", self._sitemap)
 
     @property
@@ -339,8 +334,7 @@ class KATPortalClient(object):
                 self._sitemap = executor.submit(worker).result()
         return self._sitemap
 
-    @tornado.gen.coroutine
-    def get_sitemap(self):
+    async def get_sitemap(self):
         """
         Returns the sitemap using the URL specified during instantiation.
 
@@ -383,8 +377,8 @@ class KATPortalClient(object):
                     specified schedule block
 
         """
-        yield self._init_sitemap()
-        raise tornado.gen.Return(self._sitemap)
+        await self._init_sitemap()
+        return self._sitemap
 
     @staticmethod
     def _parse_sub_nr(sitemap):
@@ -407,8 +401,7 @@ class KATPortalClient(object):
         """
         return self._parse_sub_nr(self.sitemap)
 
-    @tornado.gen.coroutine
-    def get_sub_nr(self):
+    async def get_sub_nr(self):
         """Returns subarray number, if available.
 
         This number is based on the URL used to connect to
@@ -424,16 +417,15 @@ class KATPortalClient(object):
         SubarrayNumberUnknown:
             - If the subarray number could not be determined.
         """
-        sub_nr = self._parse_sub_nr((yield self.get_sitemap()))
-        raise tornado.gen.Return(sub_nr)
+        sub_nr = self._parse_sub_nr((await self.get_sitemap()))
+        return sub_nr
 
     @property
     def is_connected(self):
         """Return True if websocket is connected."""
         return self._ws is not None
 
-    @tornado.gen.coroutine
-    def _connect(self, reconnecting=False):
+    async def _connect(self, reconnecting=False):
         """
         Connect the websocket connection specified during instantiation.
         When the connection drops, katportalclient will periodically attempt
@@ -450,21 +442,21 @@ class KATPortalClient(object):
             connected, no further attempts will be made to connect.
         """
         # The lock is used to ensure only a single connection can be made
-        with (yield self._ws_connecting_lock.acquire()):
+        with (await self._ws_connecting_lock.acquire()):
             self._disconnect_issued = False
-            websocket_url = (yield self.get_sitemap())['websocket']
+            websocket_url = (await self.get_sitemap())['websocket']
             if not self.is_connected:
                 self._logger.debug(
                     "Connecting to websocket %s", websocket_url)
                 try:
                     if self._heart_beat_timer.is_running():
                         self._heart_beat_timer.stop()
-                    self._ws = yield websocket_connect(
+                    self._ws = await websocket_connect(
                         websocket_url,
-                        on_message_callback=self._websocket_message,
+                        on_message_callback=self._handle_websocket_message,
                         connect_timeout=WS_CONNECT_TIMEOUT)
                     if reconnecting:
-                        yield self._resend_subscriptions_and_strategies()
+                        await self._resend_subscriptions_and_strategies()
                         self._logger.info("Reconnected :)")
                     self._heart_beat_timer.start()
                 except Exception:
@@ -481,15 +473,14 @@ class KATPortalClient(object):
     def _connect_later(self, wait_time):
         """Schedule later connection attempt."""
         # Trivial function, but useful for unit testing
-        self._io_loop.call_later(wait_time, self._connect, True)
+        self._io_loop.call_later(
+            wait_time, self._io_loop.spawn_callback, self._connect, True)
 
-    @tornado.gen.coroutine
-    def connect(self):
+    async def connect(self):
         """Connect to the websocket server specified during instantiation."""
-        yield self._connect(reconnecting=False)
+        await self._connect(reconnecting=False)
 
-    @tornado.gen.coroutine
-    def _send_heart_beat(self):
+    async def _send_heart_beat(self):
         """
         Sends a PING message to katportal to test if the websocket connection is still
         alive. If there is an error sending this message, tornado will call the
@@ -580,8 +571,7 @@ class KATPortalClient(object):
         for req in requests_to_remove:
             self._ws_jsonrpc_cache.remove(req)
 
-    @tornado.gen.coroutine
-    def _resend_subscriptions_and_strategies(self):
+    async def _resend_subscriptions_and_strategies(self):
         """
         Resend the cached subscriptions and strategies that has been set while
         the websocket connection was connected. This cache is cleared when a
@@ -589,23 +579,25 @@ class KATPortalClient(object):
         JSONRPCRequests"""
         for req in self._ws_jsonrpc_cache:
             self._logger.info('Resending JSONRPCRequest %s', req)
-            result = yield self._send(req)
+            result = await self._send(req)
             self._logger.info('Resent JSONRPCRequest, with result: %s', result)
 
-    @tornado.gen.coroutine
-    def _resend_subscriptions(self):
+    async def _resend_subscriptions(self):
         """
         Resend the cached subscriptions only. This is necessary when we receive
         a redis-reconnect server message."""
         for req in self._ws_jsonrpc_cache:
             if req.method == 'subscribe':
                 self._logger.info('Resending JSONRPCRequest %s', req)
-                result = yield self._send(req)
+                result = await self._send(req)
                 self._logger.info(
                     'Resent JSONRPCRequest, with result: %s', result)
 
-    @tornado.gen.coroutine
-    def _websocket_message(self, msg):
+    def _handle_websocket_message(self, msg):
+        """Schedule async websocket message handling for Tornado callbacks."""
+        self._io_loop.spawn_callback(self._websocket_message, msg)
+
+    async def _websocket_message(self, msg):
         """
         All websocket messages calls this method.
         If the message is None, the websocket connection was closed. When
@@ -627,22 +619,22 @@ class KATPortalClient(object):
                 if self._ws is not None:
                     self._ws.close()
                     self._ws = None
-                yield self._connect(reconnecting=True)
+                await self._connect(reconnecting=True)
             return
         try:
             msg = json.loads(msg)
             self._logger.debug("Message received: %s", msg)
             msg_id = str(msg['id'])
             if msg_id.startswith('redis-pubsub'):
-                self._process_redis_message(msg, msg_id)
+                await self._process_redis_message(msg, msg_id)
             elif msg_id.startswith('redis-reconnect'):
                 # only resubscribe to namespaces, the server will still
                 # publish sensor value updates to redis because the client
                 # did not disconnect, katportal lost its own connection
                 # to redis
-                yield self._resend_subscriptions()
+                await self._resend_subscriptions()
             else:
-                self._process_json_rpc_message(msg, msg_id)
+                await self._process_json_rpc_message(msg, msg_id)
         except Exception:
             self._logger.exception(
                 "Error processing websocket message! {}".format(msg))
@@ -652,8 +644,7 @@ class KATPortalClient(object):
                 self._logger.warn('Ignoring message (no on_update_callback): %s',
                                   msg)
 
-    @tornado.gen.coroutine
-    def _process_redis_message(self, msg, msg_id):
+    async def _process_redis_message(self, msg, msg_id):
         """Internal handler for Redis messages."""
         msg_result = msg['result']
         processed = False
@@ -666,8 +657,7 @@ class KATPortalClient(object):
                 self._logger.warn('Ignoring message (no on_update_callback): %s',
                                   msg_result)
 
-    @tornado.gen.coroutine
-    def _process_json_rpc_message(self, msg, msg_id):
+    async def _process_json_rpc_message(self, msg, msg_id):
         """Internal handler for JSON RPC response messages."""
         future = self._pending_requests.get(msg_id, None)
         if future:
@@ -694,15 +684,13 @@ class KATPortalClient(object):
             future.set_exception(Exception(err_msg))
             return future
 
-    @tornado.gen.coroutine
-    def add(self, x, y):
+    async def add(self, x, y):
         """Simple method useful for testing."""
         req = JSONRPCRequest('add', [x, y])
-        result = yield self._send(req)
-        raise tornado.gen.Return(result)
+        result = await self._send(req)
+        return result
 
-    @tornado.gen.coroutine
-    def subscribe(self, namespace, sub_strings=None):
+    async def subscribe(self, namespace, sub_strings=None):
         r"""Subscribe to the specified string identifiers in a namespace.
 
         A namespace provides grouping and consist of channels that can be
@@ -785,12 +773,11 @@ class KATPortalClient(object):
             Number of strings identifiers subscribed to.
         """
         req = JSONRPCRequest('subscribe', [namespace, sub_strings])
-        result = yield self._send(req)
+        result = await self._send(req)
         self._cache_jsonrpc_request(req)
-        raise tornado.gen.Return(result)
+        return result
 
-    @tornado.gen.coroutine
-    def unsubscribe(self, namespace, unsub_strings=None):
+    async def unsubscribe(self, namespace, unsub_strings=None):
         """Unsubscribe from the specified string identifiers in a namespace.
 
         Method supports both exact string identifiers and redis glob-style
@@ -818,12 +805,11 @@ class KATPortalClient(object):
             Number of strings identifiers unsubscribed from.
         """
         req = JSONRPCRequest('unsubscribe', [namespace, unsub_strings])
-        result = yield self._send(req)
+        result = await self._send(req)
         self._cache_jsonrpc_request(req)
-        raise tornado.gen.Return(result)
+        return result
 
-    @tornado.gen.coroutine
-    def set_sampling_strategy(self, namespace, sensor_name,
+    async def set_sampling_strategy(self, namespace, sensor_name,
                               strategy_and_params, persist_to_redis=False):
         """Set up a specified sensor strategy for a specific single sensor.
 
@@ -860,12 +846,11 @@ class KATPortalClient(object):
             'set_sampling_strategy',
             [namespace, sensor_name, strategy_and_params, persist_to_redis]
         )
-        result = yield self._send(req)
+        result = await self._send(req)
         self._cache_jsonrpc_request(req)
-        raise tornado.gen.Return(result)
+        return result
 
-    @tornado.gen.coroutine
-    def set_sampling_strategies(self, namespace, filters,
+    async def set_sampling_strategies(self, namespace, filters,
                                 strategy_and_params, persist_to_redis=False):
         """
         Set up a specified sensor strategy for a filtered list of sensors.
@@ -922,9 +907,9 @@ class KATPortalClient(object):
             'set_sampling_strategies',
             [namespace, filters, strategy_and_params, persist_to_redis]
         )
-        result = yield self._send(req)
+        result = await self._send(req)
         self._cache_jsonrpc_request(req)
-        raise tornado.gen.Return(result)
+        return result
 
     def _extract_schedule_blocks(self, json_text, subarray_number):
         """Extract and return list of schedule block IDs from a JSON response."""
@@ -938,8 +923,7 @@ class KATPortalClient(object):
                     results.append(schedule_block['id_code'])
         return results
 
-    @tornado.gen.coroutine
-    def schedule_blocks_assigned(self):
+    async def schedule_blocks_assigned(self):
         """Return list of assigned observation schedule blocks.
 
         The schedule blocks have already been verified and assigned to
@@ -966,13 +950,12 @@ class KATPortalClient(object):
         SubarrayNumberUnknown:
             - If a subarray number could not be determined.
         """
-        url = (yield self.get_sitemap())['schedule_blocks'] + '/scheduled'
-        response = yield self._http_client.fetch(url)
-        results = self._extract_schedule_blocks(response.body, (yield self.get_sub_nr()))
-        raise tornado.gen.Return(results)
+        url = (await self.get_sitemap())['schedule_blocks'] + '/scheduled'
+        response = await self._http_client.fetch(url)
+        results = self._extract_schedule_blocks(response.body, (await self.get_sub_nr()))
+        return results
 
-    @tornado.gen.coroutine
-    def future_targets(self, id_code):
+    async def future_targets(self, id_code):
         """
         Return a list of future targets as determined by the dry run of the
         schedule block.
@@ -1023,7 +1006,7 @@ class KATPortalClient(object):
         ScheduleBlockNotFoundError:
             If no information was available for the requested schedule block.
         """
-        sb = yield self.schedule_block_detail(id_code)
+        sb = await self.schedule_block_detail(id_code)
         targets_list = []
         sb_targets = sb.get('targets')
         if sb_targets is not None:
@@ -1033,10 +1016,9 @@ class KATPortalClient(object):
                 raise ScheduleBlockTargetsParsingError(
                     'There was an error parsing the schedule block (%s) '
                     'targets attribute: %s', id_code, sb_targets)
-        raise tornado.gen.Return(targets_list)
+        return targets_list
 
-    @tornado.gen.coroutine
-    def schedule_block_detail(self, id_code):
+    async def schedule_block_detail(self, id_code):
         """Return detailed information about an observation schedule block.
 
         For a list of schedule block IDs, see :meth:`.schedule_blocks_assigned`.
@@ -1102,17 +1084,16 @@ class KATPortalClient(object):
         ScheduleBlockNotFoundError:
             If no information was available for the requested schedule block.
         """
-        url = (yield self.get_sitemap())['schedule_blocks'] + '/' + id_code
-        response = yield self._http_client.fetch(url)
+        url = (await self.get_sitemap())['schedule_blocks'] + '/' + id_code
+        response = await self._http_client.fetch(url)
         response = json.loads(response.body)
         schedule_block = response['result']
         if not schedule_block:
             raise ScheduleBlockNotFoundError(
                 "Invalid schedule block ID: " + id_code)
-        raise tornado.gen.Return(schedule_block)
+        return schedule_block
 
-    @tornado.gen.coroutine
-    def sb_ids_by_capture_block(self, capture_block_id):
+    async def sb_ids_by_capture_block(self, capture_block_id):
         """Return list of observation schedule blocks associated with the given
         capture block ID.
 
@@ -1135,11 +1116,11 @@ class KATPortalClient(object):
             List of matching schedule block ID strings.  Could be empty.
 
         """
-        url = (yield self.get_sitemap())['capture_blocks'] + '/sb/' + capture_block_id
-        response = yield self._http_client.fetch(url)
+        url = (await self.get_sitemap())['capture_blocks'] + '/sb/' + capture_block_id
+        response = await self._http_client.fetch(url)
         response = json.loads(response.body)
         schedule_block_ids = response['result']
-        raise tornado.gen.Return(schedule_block_ids)
+        return schedule_block_ids
 
     def _extract_sensors_details(self, json_text):
         """Extract and return list of sensor names from a JSON response."""
@@ -1154,8 +1135,7 @@ class KATPortalClient(object):
                 results = sensors['data']
         return results
 
-    @tornado.gen.coroutine
-    def sensor_names(self, filters):
+    async def sensor_names(self, filters):
         """Return list of matching sensor names.
 
         Provides the list of available sensors in the system that match the
@@ -1183,21 +1163,20 @@ class KATPortalClient(object):
         SensorNotFoundError:
             - If any of the filters were invalid regular expression patterns.
         """
-        url = (yield self.get_sitemap())['historic_sensor_values'] + '/sensors'
+        url = (await self.get_sitemap())['historic_sensor_values'] + '/sensors'
         if isinstance(filters, str):
             filters = [filters]
         results = set()
         for filt in filters:
             query_url = url_concat(url, {"sensors": filt})
-            response = yield self._http_client.fetch(query_url)
+            response = await self._http_client.fetch(query_url)
             new_sensors = self._extract_sensors_details(response.body)
             # only add sensors once, to ensure a unique list
             for sensor in new_sensors:
                 results.add(sensor['name'])
-        raise tornado.gen.Return(sorted(results))
+        return sorted(results)
 
-    @tornado.gen.coroutine
-    def sensor_detail(self, sensor_name):
+    async def sensor_detail(self, sensor_name):
         """Return detailed attribute information for a sensor.
 
         For a list of sensor names, see :meth:`.sensors_list`.
@@ -1248,8 +1227,8 @@ class KATPortalClient(object):
             - If no information was available for the requested sensor name.
             - If the sensor name was not a unique match for a single sensor.
         """
-        url = (yield self.get_sitemap())['historic_sensor_values'] + '/sensors'
-        response = yield self._http_client.fetch("{}?sensors={}".format(url, sensor_name))
+        url = (await self.get_sitemap())['historic_sensor_values'] + '/sensors'
+        response = await self._http_client.fetch("{}?sensors={}".format(url, sensor_name))
         results = self._extract_sensors_details(response.body)
         if len(results) == 0:
             raise SensorNotFoundError("Sensor name not found: " + sensor_name)
@@ -1265,7 +1244,7 @@ class KATPortalClient(object):
                               'units': attrs.get('units'),
                               'type': attrs.get('type'),
                               'component': result.get('component')}
-                    raise tornado.gen.Return(result)
+                    return result
             raise SensorNotFoundError(
                 "Multiple sensors ({}) found - specify a single sensor "
                 "name not a pattern like: '{}'.  (Some matches: {})."
@@ -1281,10 +1260,9 @@ class KATPortalClient(object):
                       'units': attrs.get('units'),
                       'type': attrs.get('type'),
                       'component': results[0].get('component')}
-            raise tornado.gen.Return(result)
+            return result
 
-    @tornado.gen.coroutine
-    def sensor_value(self, sensor_name, components=None, include_value_ts=False):
+    async def sensor_value(self, sensor_name, components=None, include_value_ts=False):
         """Return the latest reading of a sensor.
 
         .. note::
@@ -1323,9 +1301,9 @@ class KATPortalClient(object):
         else:
             components = "all"
 
-        url = (yield self.get_sitemap())['monitor'] + '/list-sensors/' + components
+        url = (await self.get_sitemap())['monitor'] + '/list-sensors/' + components
 
-        response = yield self._http_client.fetch(
+        response = await self._http_client.fetch(
             "{}?reading_only=1&name_filter=^{}$".format(url, sensor_name))
         try:
             results = json.loads(response.body)
@@ -1355,19 +1333,18 @@ class KATPortalClient(object):
             result_to_format = results[0]
 
         if include_value_ts:
-            raise tornado.gen.Return(SensorSampleValueTime(
+            return SensorSampleValueTime(
                 sample_time=result_to_format['time'],
                 value_time=result_to_format['value_ts'],
                 value=result_to_format['value'],
-                status=result_to_format['status']))
+                status=result_to_format['status'])
         else:
-            raise tornado.gen.Return(SensorSample(
+            return SensorSample(
                 sample_time=result_to_format['time'],
                 value=result_to_format['value'],
-                status=result_to_format['status']))
+                status=result_to_format['status'])
 
-    @tornado.gen.coroutine
-    def sensor_values(self, filters, components=None, include_value_ts=False):
+    async def sensor_values(self, filters, components=None, include_value_ts=False):
         """Return a list of latest readings of the sensors matching the
         specified pattern.
 
@@ -1404,7 +1381,7 @@ class KATPortalClient(object):
         else:
             components = "all"
 
-        url = (yield self.get_sitemap())['monitor'] + '/list-sensors/' + components
+        url = (await self.get_sitemap())['monitor'] + '/list-sensors/' + components
 
         if isinstance(filters, str):
             filters = [filters]
@@ -1413,7 +1390,7 @@ class KATPortalClient(object):
 
         for filt in filters:
             query_url = url_concat(url, {"reading_only": "1", "name_filter": filt})
-            response = yield self._http_client.fetch(query_url)
+            response = await self._http_client.fetch(query_url)
             try:
                 results = json.loads(response.body)
             except ValueError:
@@ -1436,10 +1413,9 @@ class KATPortalClient(object):
                         value=result['value'],
                         status=result['status'])
 
-        raise tornado.gen.Return(results_to_return)
+        return results_to_return
 
-    @tornado.gen.coroutine
-    def sensor_history(self, sensor_name, start_time_sec, end_time_sec,
+    async def sensor_history(self, sensor_name, start_time_sec, end_time_sec,
                        include_value_ts=False, timeout_sec=0):
         """Return time history of sample measurements for a sensor.
 
@@ -1492,9 +1468,9 @@ class KATPortalClient(object):
         }
 
         url = url_concat(
-            (yield self.get_sitemap())['historic_sensor_values'] + '/query', params)
+            (await self.get_sitemap())['historic_sensor_values'] + '/query', params)
         self._logger.debug("Sensor history request: %s", url)
-        response = yield self._http_client.fetch(url)
+        response = await self._http_client.fetch(url)
         data_json = json.loads(response.body)
         if 'data' not in data_json:
             raise SensorHistoryRequestError("Error requesting sensor history: {}"
@@ -1512,10 +1488,9 @@ class KATPortalClient(object):
                                       item['status'])
             data.append(sample)
         result = sorted(data, key=_sort_by_sample_time)
-        raise tornado.gen.Return(result)
+        return result
 
-    @tornado.gen.coroutine
-    def sensors_histories(self, filters, start_time_sec, end_time_sec,
+    async def sensors_histories(self, filters, start_time_sec, end_time_sec,
                           include_value_ts=False, timeout_sec=0):
         """Return time histories of sample measurements for multiple sensors.
 
@@ -1561,16 +1536,15 @@ class KATPortalClient(object):
             - If any of the filters were invalid regular expression patterns.
         """
 
-        sensors = yield self.sensor_names(filters)
+        sensors = await self.sensor_names(filters)
         histories = {}
         for sensor in sensors:
-            histories[sensor] = yield self.sensor_history(
+            histories[sensor] = await self.sensor_history(
                 sensor, start_time_sec, end_time_sec,
                 include_value_ts=include_value_ts, timeout_sec=timeout_sec)
-        raise tornado.gen.Return(histories)
+        return histories
 
-    @tornado.gen.coroutine
-    def userlog_tags(self):
+    async def userlog_tags(self):
         """Return all userlog tags in the database.
 
         Returns
@@ -1598,12 +1572,11 @@ class KATPortalClient(object):
             {..}]
 
         """
-        url = (yield self.get_sitemap())['userlogs'] + '/tags'
-        response = yield self._http_client.fetch(url)
-        raise tornado.gen.Return(json.loads(response.body))
+        url = (await self.get_sitemap())['userlogs'] + '/tags'
+        response = await self._http_client.fetch(url)
+        return json.loads(response.body)
 
-    @tornado.gen.coroutine
-    def userlogs(self, start_time=None, end_time=None):
+    async def userlogs(self, start_time=None, end_time=None):
         """
         Return a list of userlogs in the database that has an start_time
         and end_time combination that intersects with the given start_time
@@ -1694,7 +1667,7 @@ class KATPortalClient(object):
                 'end_time': '2017-02-07 23:59:59'
              }, {..}]
         """
-        url = (yield self.get_sitemap())['userlogs'] + '/query?'
+        url = (await self.get_sitemap())['userlogs'] + '/query?'
         if start_time is None:
             start_time = time.strftime('%Y-%m-%d 00:00:00')
         if end_time is None:
@@ -1704,12 +1677,11 @@ class KATPortalClient(object):
             'end_time': end_time
         }
         query_string = urlencode(request_params)
-        response = yield self.authorized_fetch(
+        response = await self.authorized_fetch(
             url='{}{}'.format(url, query_string), auth_token=self._session_id)
-        raise tornado.gen.Return(json.loads(response.body))
+        return json.loads(response.body)
 
-    @tornado.gen.coroutine
-    def create_userlog(self, content, tag_ids=None, start_time=None,
+    async def create_userlog(self, content, tag_ids=None, start_time=None,
                        end_time=None):
         """
         Create a userlog with specified linked tags and content, start_time
@@ -1755,7 +1727,7 @@ class KATPortalClient(object):
                 'end_time': '2017-02-07 23:59:59'
              }
         """
-        url = (yield self.get_sitemap())['userlogs']
+        url = (await self.get_sitemap())['userlogs']
         new_userlog = {
             'user': self._current_user_id,
             'content': content
@@ -1767,13 +1739,12 @@ class KATPortalClient(object):
         if tag_ids is not None:
             new_userlog['tag_ids'] = tag_ids
 
-        response = yield self.authorized_fetch(
+        response = await self.authorized_fetch(
             url=url, auth_token=self._session_id,
             method='POST', body=json.dumps(new_userlog))
-        raise tornado.gen.Return(json.loads(response.body))
+        return json.loads(response.body)
 
-    @tornado.gen.coroutine
-    def modify_userlog(self, userlog, tag_ids=None):
+    async def modify_userlog(self, userlog, tag_ids=None):
         """
         Modify an existing userlog using the dictionary provided as the
         modified attributes of the userlog.
@@ -1819,14 +1790,13 @@ class KATPortalClient(object):
                 raise
         else:
             userlog['tag_ids'] = tag_ids
-        url = '{}/{}'.format((yield self.get_sitemap())['userlogs'], userlog['id'])
-        response = yield self.authorized_fetch(
+        url = '{}/{}'.format((await self.get_sitemap())['userlogs'], userlog['id'])
+        response = await self.authorized_fetch(
             url=url, auth_token=self._session_id,
             method='POST', body=json.dumps(userlog))
-        raise tornado.gen.Return(json.loads(response.body))
+        return json.loads(response.body)
 
-    @tornado.gen.coroutine
-    def sensor_subarray_lookup(self, component, sensor, return_katcp_name=False):
+    async def sensor_subarray_lookup(self, component, sensor, return_katcp_name=False):
         """Return full sensor name for generic component and sensor names.
 
         This method gets the full sensor name based on a generic component and
@@ -1871,17 +1841,17 @@ class KATPortalClient(object):
         url = (
             "{base_url}/{sub_nr}/sensor-lookup/{component}/{sensor}/{katcp_format}"
             .format(
-                base_url=(yield self.get_sitemap())['subarray'],
-                sub_nr=(yield self.get_sub_nr()),
+                base_url=(await self.get_sitemap())['subarray'],
+                sub_nr=(await self.get_sub_nr()),
                 component=component,
                 sensor=sensor,
                 katcp_format=1 if return_katcp_name else 0))
-        response = yield self._http_client.fetch(url)
+        response = await self._http_client.fetch(url)
         data = json.loads(response.body)
         if 'error' in data:
             raise SensorLookupError(data['error'])
         else:
-            raise tornado.gen.Return(data['result'])
+            return data['result']
 
 
 class ScheduleBlockNotFoundError(Exception):
