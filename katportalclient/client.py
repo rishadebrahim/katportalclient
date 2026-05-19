@@ -3,11 +3,6 @@
 """
 Websocket client and HTTP module for access to katportal webservers.
 """
-from __future__ import division
-from __future__ import absolute_import
-
-from future import standard_library
-standard_library.install_aliases()  # noqa: E402
 import base64
 import hashlib
 import hmac
@@ -23,7 +18,6 @@ import tornado.locks
 
 from builtins import bytes, object, str
 from collections import namedtuple
-from past.builtins import basestring
 from urllib.parse import urlencode
 
 from tornado.httpclient import HTTPRequest
@@ -1190,7 +1184,7 @@ class KATPortalClient(object):
             - If any of the filters were invalid regular expression patterns.
         """
         url = (yield self.get_sitemap())['historic_sensor_values'] + '/sensors'
-        if isinstance(filters, basestring):
+        if isinstance(filters, str):
             filters = [filters]
         results = set()
         for filt in filters:
@@ -1412,7 +1406,7 @@ class KATPortalClient(object):
 
         url = (yield self.get_sitemap())['monitor'] + '/list-sensors/' + components
 
-        if isinstance(filters, basestring):
+        if isinstance(filters, str):
             filters = [filters]
 
         results_to_return = {}

@@ -1,21 +1,16 @@
 # Copyright 2015 SKA South Africa (http://ska.ac.za/)
 # BSD license - see COPYING for details
 """Tests for katportalclient."""
-from __future__ import print_function
-
-from future import standard_library
-standard_library.install_aliases()  # noqa: E402
 import logging
 import io
 import time
 from urllib.parse import quote_plus
+from unittest import mock
 
-import mock
 import ujson as json  # noqa: E402
 
 from builtins import bytes, zip
 from functools import partial
-from past.builtins import basestring
 
 from tornado import concurrent, gen
 from tornado.httpclient import HTTPResponse, HTTPRequest
@@ -1625,11 +1620,11 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                             ends_withs=None, containses=None):
         """Allows definition of multiple HTTP async fetchers."""
         num_calls = len(valid_responses)
-        if starts_withs is None or isinstance(starts_withs, basestring):
+        if starts_withs is None or isinstance(starts_withs, str):
             starts_withs = [starts_withs] * num_calls
-        if ends_withs is None or isinstance(ends_withs, basestring):
+        if ends_withs is None or isinstance(ends_withs, str):
             ends_withs = [ends_withs] * num_calls
-        if containses is None or isinstance(containses, basestring):
+        if containses is None or isinstance(containses, str):
             containses = [containses] * num_calls
         assert(len(invalid_responses) == num_calls)
         assert(len(starts_withs) == num_calls)
