@@ -15,7 +15,8 @@ from functools import partial
 
 from tornado import concurrent, gen
 from tornado.httpclient import HTTPResponse, HTTPRequest
-from tornado.test.websocket_test import WebSocketBaseTestCase, TestWebSocketHandler
+from tornado.test.websocket_test import (
+    WebSocketBaseTestCase, TestWebSocketHandler as _TestWebSocketHandler)
 from tornado.testing import gen_test
 from tornado.web import Application
 
@@ -40,7 +41,7 @@ sensor_json = {
                                    "site":"deva",
                                    "original_name":"anc.weather.wind-speed",
                                    "params":"[0.0, 70.0]",
-                                   "units":"m\/s",
+                                   "units":"m/s",
                                    "type":"float"}}""",
 
     "anc_mean_wind_speed": """{ "name" : "anc_mean_wind_speed",
@@ -50,7 +51,7 @@ sensor_json = {
                                  "site":"deva",
                                  "original_name":"anc.mean-wind-speed",
                                  "params":"[0.0, 70.0]",
-                                 "units":"m\/s",
+                                 "units":"m/s",
                                  "type":"float"}}""",
 
     "anc_gust_wind_speed": """{"name" :"anc_gust_wind_speed",
@@ -60,7 +61,7 @@ sensor_json = {
                                 "site":"deva",
                                 "original_name":"anc.gust-wind-speed",
                                 "params":"[0.0, 70.0]",
-                                "units":"m\/s",
+                                "units":"m/s",
                                 "type":"float"}}""",
 
     "anc_gust_wind_speed2": """{"name" :"anc_gust_wind_speed2",
@@ -70,7 +71,7 @@ sensor_json = {
                                 "site":"deva",
                                 "original_name":"anc.gust-wind-speed2",
                                 "params":"[0.0, 72.0]",
-                                "units":"m\/s",
+                                "units":"m/s",
                                 "type":"float"}}""",
 
     "anc_wind_device_status": """{"name" :"anc_wind_device_status",
@@ -221,7 +222,7 @@ sensor_data_fail = """{
 test_websocket = None
 
 
-class TestWebSocket(TestWebSocketHandler):
+class FakeWebSocket(_TestWebSocketHandler):
     """Web socket test server."""
 
     def open(self):
@@ -322,7 +323,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self.logger.setLevel(logging.INFO)
         self.close_future = gen.Future()
         self.application = Application([
-            ('/test', TestWebSocket, dict(close_future=self.close_future)),
+            ('/test', FakeWebSocket, dict(close_future=self.close_future)),
         ])
         self.application.logger = self.logger
         return self.application
@@ -408,7 +409,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             JSONRPCRequest(method='subscribe', params='test params6')]
         await self._portal_client._resend_subscriptions()
         # only subscribes must be resent!
-        self.assertEquals(self._portal_client._send.call_count, 4)
+        self.assertEqual(self._portal_client._send.call_count, 4)
 
     @gen_test
     async def test_resend_subscriptions_and_strategies(self):
@@ -429,7 +430,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                            params='test params5'),
             JSONRPCRequest(method='set_sampling_strategies', params='test params6')]
         await self._portal_client._resend_subscriptions_and_strategies()
-        self.assertEquals(self._portal_client._send.call_count, 6)
+        self.assertEqual(self._portal_client._send.call_count, 6)
 
     @gen_test
     async def test_disconnect(self):
@@ -439,7 +440,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         self._portal_client.disconnect()
         self.assertFalse(self._portal_client.is_connected)
         self.assertFalse(self._portal_client._heart_beat_timer.is_running())
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache, [])
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache, [])
         self.assertTrue(self._portal_client._disconnect_issued)
 
     @gen_test
@@ -468,57 +469,57 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         req8 = JSONRPCRequest('set_sampling_strategies',
                               ['namespace', 'sensor_name', 'none'])
         self._portal_client._cache_jsonrpc_request(req1)
-        self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 1)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
+        self.assertEqual(len(self._portal_client._ws_jsonrpc_cache), 1)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
         self._portal_client._cache_jsonrpc_request(req2)
-        self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 2)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
+        self.assertEqual(len(self._portal_client._ws_jsonrpc_cache), 2)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
         # test no duplicates are added
         self._portal_client._cache_jsonrpc_request(req1)
-        self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 2)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
+        self.assertEqual(len(self._portal_client._ws_jsonrpc_cache), 2)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
         # test subscriptions are added
         self._portal_client._cache_jsonrpc_request(req3)
-        self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 3)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[2].id, req3.id)
+        self.assertEqual(len(self._portal_client._ws_jsonrpc_cache), 3)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[2].id, req3.id)
         # test no duplicate subscriptions are added
         self._portal_client._cache_jsonrpc_request(req3)
-        self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 3)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[2].id, req3.id)
+        self.assertEqual(len(self._portal_client._ws_jsonrpc_cache), 3)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[2].id, req3.id)
         # test that an unsubscribe removes a subscribe message
         self._portal_client._cache_jsonrpc_request(req4)
-        self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 2)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
+        self.assertEqual(len(self._portal_client._ws_jsonrpc_cache), 2)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
         # test set_sampling_strategy and set_sampling_strategies are added
         self._portal_client._cache_jsonrpc_request(req5)
         self._portal_client._cache_jsonrpc_request(req7)
-        self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 4)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[2].id, req5.id)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[3].id, req7.id)
+        self.assertEqual(len(self._portal_client._ws_jsonrpc_cache), 4)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[2].id, req5.id)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[3].id, req7.id)
         # test set_sampling_strategy and set_sampling_strategies are not
         # duplicated
         self._portal_client._cache_jsonrpc_request(req5)
         self._portal_client._cache_jsonrpc_request(req7)
-        self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 4)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[2].id, req5.id)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[3].id, req7.id)
+        self.assertEqual(len(self._portal_client._ws_jsonrpc_cache), 4)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[2].id, req5.id)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[3].id, req7.id)
         # test that set_sampling_strategy and set_sampling_strategies are removed
         # when a strategy of none is given
         self._portal_client._cache_jsonrpc_request(req6)
         self._portal_client._cache_jsonrpc_request(req8)
-        self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 2)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
-        self.assertEquals(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
+        self.assertEqual(len(self._portal_client._ws_jsonrpc_cache), 2)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[0].id, req1.id)
+        self.assertEqual(self._portal_client._ws_jsonrpc_cache[1].id, req2.id)
         # test cache is cleared on a disconnect
         self._portal_client.disconnect()
-        self.assertEquals(len(self._portal_client._ws_jsonrpc_cache), 0)
+        self.assertEqual(len(self._portal_client._ws_jsonrpc_cache), 0)
 
     @gen_test
     async def test_subscribe(self):
@@ -1245,7 +1246,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         with self.assertRaises(ScheduleBlockNotFoundError):
             await self._portal_client.future_targets('bad sb id code')
         targets_list = await self._portal_client.future_targets(sb_id_code_3)
-        self.assertEquals(targets_list, [{u'key': u'some json body'}])
+        self.assertEqual(targets_list, [{u'key': u'some json body'}])
 
     def test_create_jwt_login_token(self):
         """Test that our jwt encoding works as expected"""
@@ -1253,14 +1254,14 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             email='test@test.test', password='testpassword')
         # test tokens for this test is generated using a the email, password combination
         # and the standard JWT standard RFC 7519, see http://jwt.io
-        self.assertEquals(
+        self.assertEqual(
             test_token,
             b'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InRlc3RAdGVzdC'
             b'50ZXN0In0.aI9/c3tgy5kaKUMfeVHn/3CWLddz4lZI4yFAqHq/JH0=')
         test_token2 = create_jwt_login_token(
             email='random text should also work, you never know!',
             password='some PeOpl3 have WEIRD pa$$words?')
-        self.assertEquals(
+        self.assertEqual(
             test_token2,
             b'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InJhbmRvbSB0ZX'
             b'h0IHNob3VsZCBhbHNvIHdvcmssIHlvdSBuZXZlciBrbm93ISJ9.H1aItCXEZfNO'
@@ -1288,9 +1289,9 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             auth_token='token generated by katportal',
             url=self._portal_client.sitemap['authorization'] + '/user/login',
             body='', method='POST')
-        self.assertEquals(self._portal_client._session_id,
+        self.assertEqual(self._portal_client._session_id,
                           'token generated by katportal')
-        self.assertEquals(self._portal_client._current_user_id, '123')
+        self.assertEqual(self._portal_client._current_user_id, '123')
 
         # Test a failed login
         authorized_fetch_fail_future = gen.Future()
@@ -1309,8 +1310,8 @@ class TestKATPortalClient(WebSocketBaseTestCase):
                        b'haWwgdXNlcm5hbWUifQ.IWU7Asuevn8Skm+qU7GJPuhLFoCvG47A'
                        b'M7lyRQfAbT0=',
             url='http://0.0.0.0/katauth/user/verify/read_only')
-        self.assertEquals(self._portal_client._session_id, None)
-        self.assertEquals(self._portal_client._current_user_id, None)
+        self.assertEqual(self._portal_client._session_id, None)
+        self.assertEqual(self._portal_client._current_user_id, None)
 
     @gen_test
     async def test_logout(self):
@@ -1334,14 +1335,14 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             auth_token='token generated by katportal',
             url=self._portal_client.sitemap['authorization'] + '/user/login',
             body='', method='POST')
-        self.assertEquals(self._portal_client._session_id,
+        self.assertEqual(self._portal_client._session_id,
                           'token generated by katportal')
-        self.assertEquals(self._portal_client._current_user_id, '123')
+        self.assertEqual(self._portal_client._current_user_id, '123')
 
         # logout
         await self._portal_client.logout()
-        self.assertEquals(self._portal_client._session_id, None)
-        self.assertEquals(self._portal_client._current_user_id, None)
+        self.assertEqual(self._portal_client._session_id, None)
+        self.assertEqual(self._portal_client._current_user_id, None)
         self._portal_client.authorized_fetch.assert_called_with(
             auth_token='token generated by katportal',
             url=self._portal_client.sitemap['authorization'] + '/user/logout',
@@ -1368,9 +1369,9 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             starts_withs=base_url)
 
         tags = await self._portal_client.userlog_tags()
-        self.assertEquals(len(tags), 2)
-        self.assertEquals(tags[0]['id'], '1')
-        self.assertEquals(tags[1]['id'], '2')
+        self.assertEqual(len(tags), 2)
+        self.assertEqual(tags[0]['id'], '1')
+        self.assertEqual(tags[1]['id'], '2')
 
     @gen_test
     async def test_userlogs(self):
@@ -1421,9 +1422,9 @@ class TestKATPortalClient(WebSocketBaseTestCase):
         authorized_fetch_future.set_result(auth_fetch_result)
 
         userlogs = await self._portal_client.userlogs()
-        self.assertEquals(len(userlogs), 2)
-        self.assertEquals(userlogs[0]['id'], '40')
-        self.assertEquals(userlogs[1]['id'], '41')
+        self.assertEqual(len(userlogs), 2)
+        self.assertEqual(userlogs[0]['id'], '40')
+        self.assertEqual(userlogs[1]['id'], '41')
 
     @gen_test
     async def test_create_userlog(self):
@@ -1464,7 +1465,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             tag_ids=[1, 2, 3],
             start_time='2017-02-07 08:47:22',
             end_time='2017-02-07 08:47:22')
-        self.assertEquals(
+        self.assertEqual(
             userlog,
             {u'other_metadata': u'[]', u'user_id': u'1', u'attachments': u'[]',
              u'tags': u'[]', u'timestamp': u'2017-02-07 08:47:22',
@@ -1540,7 +1541,7 @@ class TestKATPortalClient(WebSocketBaseTestCase):
             'end_time': '2017-02-07 23:59:59'
         }
         userlog = await self._portal_client.modify_userlog(userlog_to_modify, [1, 2, 3])
-        self.assertEquals(
+        self.assertEqual(
             userlog,
             {u'other_metadata': u'[]', u'user_id': u'1', u'attachments': u'[]',
              u'tags': u'[]', u'timestamp': u'2017-02-07 08:47:22',

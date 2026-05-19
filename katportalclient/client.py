@@ -614,7 +614,7 @@ class KATPortalClient(object):
               happens we need to resend our subscriptions
         """
         if msg is None:
-            self._logger.warn("Websocket server disconnected!")
+            self._logger.warning("Websocket server disconnected!")
             if not self._disconnect_issued:
                 if self._ws is not None:
                     self._ws.close()
@@ -641,7 +641,7 @@ class KATPortalClient(object):
             if self._on_update:
                 self._io_loop.add_callback(self._on_update, msg)
             else:
-                self._logger.warn('Ignoring message (no on_update_callback): %s',
+                self._logger.warning('Ignoring message (no on_update_callback): %s',
                                   msg)
 
     async def _process_redis_message(self, msg, msg_id):
@@ -654,7 +654,7 @@ class KATPortalClient(object):
             if self._on_update:
                 self._io_loop.add_callback(self._on_update, msg_result)
             else:
-                self._logger.warn('Ignoring message (no on_update_callback): %s',
+                self._logger.warning('Ignoring message (no on_update_callback): %s',
                                   msg_result)
 
     async def _process_json_rpc_message(self, msg, msg_id):
@@ -1456,7 +1456,7 @@ class KATPortalClient(object):
         """
 
         if timeout_sec != 0:
-            self._logger.warn(
+            self._logger.warning(
                 "timeout_sec is no longer supported. Default tornado timeout is used")
 
         params = {
